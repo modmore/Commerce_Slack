@@ -2,9 +2,13 @@
 namespace modmore\Commerce_Slack\Modules;
 use modmore\Commerce\Admin\Configuration\About\ComposerPackages;
 use modmore\Commerce\Admin\Sections\SimpleSection;
+use modmore\Commerce\Admin\Widgets\Form\CheckboxField;
 use modmore\Commerce\Admin\Widgets\Form\DescriptionField;
+use modmore\Commerce\Admin\Widgets\Form\TextField;
 use modmore\Commerce\Events\Admin\PageEvent;
 use modmore\Commerce\Modules\BaseModule;
+use modmore\Commerce_Slack\Communication\Message;
+use modmore\Commerce_Slack\Communication\Sender;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
 require_once dirname(dirname(__DIR__)) . '/vendor/autoload.php';
@@ -33,17 +37,9 @@ class Slack extends BaseModule {
         $this->adapter->loadLexicon('commerce_slack:default');
 
         // Add the xPDO package, so Commerce can detect the derivative classes
-//        $root = dirname(dirname(__DIR__));
-//        $path = $root . '/model/';
-//        $this->adapter->loadPackage('commerce_slack', $path);
-
-        // Add template path to twig - pre-1.1 way
-//        /** @var ChainLoader $loader */
-//        $root = dirname(dirname(__DIR__));
-//        $loader = $this->commerce->twig->getLoader();
-//        $loader->addLoader(new FilesystemLoader($root . '/templates/'));
-        // Add template path to twig - 1.1+ way
-//        $this->commerce->view()->addTemplatesPath($root . '/templates/');
+        $root = dirname(__DIR__, 2);
+        $path = $root . '/model/';
+        $this->adapter->loadPackage('commerce_slack', $path);
 
         // Add composer libraries to the about section (v0.12+)
         $dispatcher->addListener(\Commerce::EVENT_DASHBOARD_LOAD_ABOUT, [$this, 'addLibrariesToAbout']);
@@ -54,8 +50,55 @@ class Slack extends BaseModule {
         $fields = [];
 
         $fields[] = new DescriptionField($this->commerce, [
-            'description' => $this->adapter->lexicon('commerce_slack.module_description'),
+            'description' => $this->adapter->lexicon('commerce_slack.webhook_url.description'),
+            'raw' => true,
         ]);
+
+        $url = $module->getProperty('webhook_url');
+        $fields[] = new TextField($this->commerce, [
+            'name' => 'properties[webhook_url]',
+            'label' => $this->adapter->lexicon('commerce_slack.webhook_url'),
+            'value' => $url,
+        ]);
+
+        $fields[] = new CheckboxField($this->commerce, [
+            'label' => $this->adapter->lexicon('commerce_slack.send_test_message'),
+            'name' => 'properties[send_test]',
+        ]);
+
+        // Check the response first
+        $lastResponse = $module->getProperty('last_response');
+        if (!empty($lastResponse)) {
+            $fields[] = new DescriptionField($this->commerce, [
+                'description' => '<div class="ui visible message error">Received an error sending test message: ' . htmlentities($lastResponse) . '</div>',
+                'raw' => true,
+            ]);
+            $module->unsetProperty('last_response');
+            $module->save();
+        }
+
+        // Only after that see if we should send a test
+        if (!empty($url) && $module->getProperty('send_test')) {
+            $payload = new Message('Commerce has permission to talk to you on Slack');
+            $payload->addBlock([
+                'type' => 'section',
+                'text' => [
+                    'type' => 'mrkdwn',
+                    'text' => ':white_check_mark: Commerce has permission to talk to you on Slack'
+                ]
+            ]);
+
+            // Send it away
+            $sender = new Sender($url);
+            $response = $sender->send($payload);
+            if ($response->getStatusCode() !== 200) {
+                $body = $response->getBody()->getContents();
+                $module->setProperty('last_response', $body);
+            }
+
+            $module->setProperty('send_test', false);
+            $module->save();
+        }
 
         return $fields;
     }
