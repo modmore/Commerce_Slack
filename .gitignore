@@ -1,0 +1,8 @@
+.idea
+config.core.php
+.DS_store
+core/components/commerce/vendor/
+docs/phpdoc-cache-*/
+_packages/
+_build/license.php
+Commerce_*/
