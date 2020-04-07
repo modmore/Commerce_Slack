@@ -1,6 +1,11 @@
 <?php
 
+use modmore\Commerce\Admin\Widgets\Form\CheckboxField;
+use modmore\Commerce\Admin\Widgets\Form\DescriptionField;
+use modmore\Commerce\Admin\Widgets\Form\SectionField;
+use modmore\Commerce\Admin\Widgets\Form\TextField;
 use modmore\Commerce_Slack\Communication\Message;
+use modmore\Commerce_Slack\Communication\Sender;
 
 /**
  * Slack for Commerce.
@@ -18,9 +23,85 @@ class SlackStatusChangeAction extends comStatusChangeAction
     {
         $fields = [];
         
-        
-        
+        $fields[] = new SectionField($this->commerce, [
+            'label' => $this->adapter->lexicon('commerce_slack.configuration')
+        ]);
+
+        $fields[] = new DescriptionField($this->commerce, [
+            'description' => $this->adapter->lexicon('commerce_slack.webhook_url.description'),
+            'raw' => true,
+        ]);
+
+        $url = $this->getProperty('webhook_url');
+        $fields[] = new TextField($this->commerce, [
+            'name' => 'properties[webhook_url]',
+            'label' => $this->adapter->lexicon('commerce_slack.webhook_url'),
+            'value' => $url,
+        ]);
+
+        $fields[] = new CheckboxField($this->commerce, [
+            'label' => $this->adapter->lexicon('commerce_slack.send_test_message'),
+            'name' => 'send_test',
+            'value' => 0,
+        ]);
+
+        // Check the response first
+        $lastResponse = $this->getProperty('last_response');
+        if (!empty($lastResponse)) {
+            $fields[] = new DescriptionField($this->commerce, [
+                'description' => '<div class="ui visible message error">Received an error sending test message: ' . htmlentities($lastResponse) . '</div>',
+                'raw' => true,
+            ]);
+            $this->unsetProperty('last_response');
+            $this->save();
+        }
+
         return $fields;
+    }
+
+    /**
+     * Sends a simple test message to confirm it works
+     *
+     * @param $url
+     * @return \Psr\Http\Message\ResponseInterface
+     */
+    public function sendTestMessage(string $url): \Psr\Http\Message\ResponseInterface
+    {
+        $siteName = $this->commerce->getOption('site_name');
+        $payload = new Message('Commerce on ' . $siteName . ' can successfully send messages to Slack');
+        $payload->addBlock([
+            'type' => 'section',
+            'text' => [
+                'type' => 'mrkdwn',
+                'text' => ':white_check_mark: Commerce on ' . $siteName . ' can successfully send messages to Slack'
+            ]
+        ]);
+
+        // Send it away
+        $sender = new Sender($url);
+        $response = $sender->send($payload);
+        if ($response->getStatusCode() !== 200) {
+            $body = $response->getBody()->getContents();
+            $this->setProperty('last_response', $body);
+        }
+        return $response;
+    }
+
+    /**
+     * Called automatically by FormWidget to handle the send_test value.
+     *
+     * @param $value
+     */
+    public function setFieldValueSend_test($value): void
+    {
+        if (empty($value)) {
+            return;
+        }
+
+        $url = (string)$this->getProperty('webhook_url');
+        if (!empty($url)) {
+            $this->sendTestMessage($url);
+        }
     }
     
     public function process(comOrder $order, comStatus $oldStatus, comStatus $newStatus, comStatusChange $statusChange)
@@ -156,14 +237,6 @@ class SlackStatusChangeAction extends comStatusChangeAction
             return $shipping->get('fullname') ?: $shipping->get('firstname') . ' ' . $shipping->get('lastname');
         }
         return 'unknown customer';
-    }
-
-    private function getModuleProperty(string $key, $default = null)
-    {
-        if ($module = $this->adapter->getObject('comModule', ['class_name' => \modmore\Commerce_Slack\Modules\Slack::class])) {
-            return $module->getProperty($key, $default);
-        }
-        return $default;
     }
 
     private function formatAddress(comOrderAddress $address)
