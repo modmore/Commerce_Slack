@@ -272,7 +272,7 @@ class SlackStatusChangeAction extends comStatusChangeAction
             ]
         ]);
 
-        $sender = new \modmore\Commerce_Slack\Communication\Sender($this->getProperty('webhook_url'));
+        $sender = new \modmore\Commerce_Slack\Communication\Sender($this->getProperty('webhook_url', ''));
         $response = $sender->send($payload);
 
         if ($response->getStatusCode() !== 200) {
