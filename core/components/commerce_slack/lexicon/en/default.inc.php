@@ -27,5 +27,8 @@ $_lang['commerce_slack.include_taxes'] = 'Include tax totals';
 $_lang['commerce_slack.include_shipping'] = 'Include shipping methods';
 $_lang['commerce_slack.include_payment'] = 'Include payment methods';
 
+$_lang['commerce_slack.intro'] = 'Received order *[[+reference]]* by *[[+name]]* for *[[+total]]*';
+$_lang['commerce_slack.success'] = 'Success! [[+site_name]] can send order notifications to Slack';
+
 $_lang['commerce.add_SlackStatusChangeAction'] = 'Send new order to Slack';
 $_lang['commerce.SlackStatusChangeAction'] = 'Send new order to Slack';

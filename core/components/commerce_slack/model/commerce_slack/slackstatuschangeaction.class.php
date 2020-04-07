@@ -108,12 +108,12 @@ class SlackStatusChangeAction extends comStatusChangeAction
         }
 
         // Send another message confirming it worked
-        $payload = new Message('Success! ' . $siteName . ' can send order notifications to Slack');
+        $payload = new Message($this->adapter->lexicon('commerce_slack.success', ['site_name' => $siteName]));
         $payload->addBlock([
             'type' => 'section',
             'text' => [
                 'type' => 'mrkdwn',
-                'text' => 'Success! ' . $siteName . ' can send order notifications to Slack :tada:'
+                'text' => $this->adapter->lexicon('commerce_slack.success', ['site_name' => $siteName]) . ' :tada:'
             ]
         ]);
         $sender = new Sender($this->getProperty('webhook_url'));
@@ -153,7 +153,11 @@ class SlackStatusChangeAction extends comStatusChangeAction
             'type' => 'section',
             'text' => [
                 'type' => 'mrkdwn',
-                'text' => "Received order *{$order->get('reference')}* by *{$name}* for *{$total}*"
+                'text' => $this->adapter->lexicon('commerce_slack.intro', [
+                    'reference' => $order->get('reference'),
+                    'name' => $name,
+                    'total' => $total,
+                ])
             ]
         ]);
 
@@ -165,13 +169,13 @@ class SlackStatusChangeAction extends comStatusChangeAction
             if ($billing) {
                 $addressBlock['elements'][] = [
                     'type' => 'mrkdwn',
-                    'text' => "*Billing Address* :classical_building:" . $this->formatAddress($billing),
+                    'text' => "*{$this->adapter->lexicon('commerce.billing_address')}* :classical_building:" . $this->formatAddress($billing),
                 ];
             }
             if ($shipping) {
                 $addressBlock['elements'][] = [
                     'type' => 'mrkdwn',
-                    'text' => "*Shipping Address* :mailbox:" . $this->formatAddress($shipping),
+                    'text' => "*{$this->adapter->lexicon('commerce.shipping_address')}* :mailbox:" . $this->formatAddress($shipping),
                 ];
             }
             if (count($addressBlock['elements']) > 0) {
@@ -230,7 +234,7 @@ class SlackStatusChangeAction extends comStatusChangeAction
                 if ($transaction->isCompleted() && $method = $transaction->getMethod()) {
                     $misc[] = [
                         'type' => 'mrkdwn',
-                        'text' => "Paid with *{$method->get('name')}*",
+                        'text' => "{$this->adapter->lexicon('commerce.paid_with')} *{$method->get('name')}*",
                     ];
                 }
             }
@@ -300,12 +304,7 @@ class SlackStatusChangeAction extends comStatusChangeAction
     {
         $t = $address->toArray();
         $formatted = $this->commerce->formatAddress($t);
-
-        // <br> to \n; Slack will reverse this
-//        $formatted = str_replace('<br>', "\n", $formatted);
-
         $formatted = strip_tags($formatted);
-
         return $formatted;
     }
 }
