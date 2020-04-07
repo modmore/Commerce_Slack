@@ -45,7 +45,6 @@ class SlackStatusChangeAction extends comStatusChangeAction
             'value' => 0,
         ]);
 
-        // Check the response first
         $lastResponse = $this->getProperty('last_response');
         if (!empty($lastResponse)) {
             $fields[] = new DescriptionField($this->commerce, [
@@ -60,31 +59,44 @@ class SlackStatusChangeAction extends comStatusChangeAction
     }
 
     /**
-     * Sends a simple test message to confirm it works
-     *
-     * @param $url
-     * @return \Psr\Http\Message\ResponseInterface
+     * Sends a test message to confirm it works
      */
-    public function sendTestMessage(string $url): \Psr\Http\Message\ResponseInterface
+    public function sendTestMessage(): void
     {
         $siteName = $this->commerce->getOption('site_name');
-        $payload = new Message('Commerce on ' . $siteName . ' can successfully send messages to Slack');
+
+        // Grab the last order to send as a test
+        $c = $this->adapter->newQuery('comOrder');
+        $c->where([
+            'test' => $this->commerce->isTestMode(),
+        ]);
+        $c->sortby('received_on', 'DESC');
+        $order = $this->adapter->getObject('comOrder', $c);
+        if ($order instanceof comOrder && $status = $order->getOne('Status')) {
+            $response = $this->sendOrderToSlack($order, $status);
+            if ($response->getStatusCode() !== 200) {
+                $body = (string)$response->getBody();
+                $this->setProperty('last_response', $body);
+                $this->save();
+                return;
+            }
+        }
+
+        // Send another message confirming it worked
+        $payload = new Message('Success! ' . $siteName . ' can send order notifications to Slack');
         $payload->addBlock([
             'type' => 'section',
             'text' => [
                 'type' => 'mrkdwn',
-                'text' => ':white_check_mark: Commerce on ' . $siteName . ' can successfully send messages to Slack'
+                'text' => 'Success! ' . $siteName . ' can send order notifications to Slack :tada:'
             ]
         ]);
-
-        // Send it away
-        $sender = new Sender($url);
+        $sender = new Sender($this->getProperty('webhook_url'));
         $response = $sender->send($payload);
         if ($response->getStatusCode() !== 200) {
             $body = $response->getBody()->getContents();
             $this->setProperty('last_response', $body);
         }
-        return $response;
     }
 
     /**
@@ -103,8 +115,8 @@ class SlackStatusChangeAction extends comStatusChangeAction
             $this->sendTestMessage($url);
         }
     }
-    
-    public function process(comOrder $order, comStatus $oldStatus, comStatus $newStatus, comStatusChange $statusChange)
+
+    public function sendOrderToSlack(comOrder $order, comStatus $status): \Psr\Http\Message\ResponseInterface
     {
         $billing = $order->getBillingAddress(true);
         $shipping = $order->getShippingAddress(true);
@@ -217,13 +229,19 @@ class SlackStatusChangeAction extends comStatusChangeAction
             ]
         ]);
 
-        $sender = new \modmore\Commerce_Slack\Communication\Sender($this->getModuleProperty('webhook_url'));
+        $sender = new \modmore\Commerce_Slack\Communication\Sender($this->getProperty('webhook_url'));
         $response = $sender->send($payload);
 
         if ($response->getStatusCode() !== 200) {
-            $this->adapter->log(1, '[Slack for Commerce] Failed sending notification to Slack. Received ' . $response->getStatusCode() . ' with body ' . $response->getBody()->getContents() . ' for payload ' . json_encode($payload->getPayload()));
+            $body = (string)$response->getBody();
+            $this->adapter->log(1, '[Slack for Commerce] Failed sending notification to Slack. Received ' . $response->getStatusCode() . ' with body ' . $body . ' for payload ' . json_encode($payload->getPayload()));
         }
+        return $response;
+    }
 
+    public function process(comOrder $order, comStatus $oldStatus, comStatus $newStatus, comStatusChange $statusChange)
+    {
+        $this->sendOrderToSlack($order, $newStatus);
         // Always return true - we don't want notificiations to halt processing.
         return true;
     }
