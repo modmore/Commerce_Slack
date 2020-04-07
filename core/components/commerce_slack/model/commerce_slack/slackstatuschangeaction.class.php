@@ -55,6 +55,31 @@ class SlackStatusChangeAction extends comStatusChangeAction
             $this->save();
         }
 
+        $fields[] = new CheckboxField($this->commerce, [
+            'label' => $this->adapter->lexicon('commerce_slack.include_addresses'),
+            'name' => 'properties[include_addresses]',
+            'value' => $this->getProperty('include_addresses'),
+            'default' => true,
+        ]);
+        $fields[] = new CheckboxField($this->commerce, [
+            'label' => $this->adapter->lexicon('commerce_slack.include_taxes'),
+            'name' => 'properties[include_taxes]',
+            'value' => $this->getProperty('include_taxes'),
+            'default' => true,
+        ]);
+        $fields[] = new CheckboxField($this->commerce, [
+            'label' => $this->adapter->lexicon('commerce_slack.include_shipping'),
+            'name' => 'properties[include_shipping]',
+            'value' => $this->getProperty('include_shipping'),
+            'default' => true,
+        ]);
+        $fields[] = new CheckboxField($this->commerce, [
+            'label' => $this->adapter->lexicon('commerce_slack.include_payment'),
+            'name' => 'properties[include_payment]',
+            'value' => $this->getProperty('include_payment'),
+            'default' => true,
+        ]);
+
         return $fields;
     }
 
@@ -132,24 +157,26 @@ class SlackStatusChangeAction extends comStatusChangeAction
             ]
         ]);
 
-        $addressBlock = [
-            'type' => 'context',
-            'elements' => [],
-        ];
-        if ($billing) {
-            $addressBlock['elements'][] = [
-                'type' => 'mrkdwn',
-                'text' => "*Billing Address* :classical_building:" . $this->formatAddress($billing),
+        if ($this->getProperty('include_addresses', true)) {
+            $addressBlock = [
+                'type' => 'context',
+                'elements' => [],
             ];
-        }
-        if ($shipping) {
-            $addressBlock['elements'][] = [
-                'type' => 'mrkdwn',
-                'text' => "*Shipping Address* :mailbox:" . $this->formatAddress($shipping),
-            ];
-        }
-        if (count($addressBlock['elements']) > 0) {
-            $payload->addBlock($addressBlock);
+            if ($billing) {
+                $addressBlock['elements'][] = [
+                    'type' => 'mrkdwn',
+                    'text' => "*Billing Address* :classical_building:" . $this->formatAddress($billing),
+                ];
+            }
+            if ($shipping) {
+                $addressBlock['elements'][] = [
+                    'type' => 'mrkdwn',
+                    'text' => "*Shipping Address* :mailbox:" . $this->formatAddress($shipping),
+                ];
+            }
+            if (count($addressBlock['elements']) > 0) {
+                $payload->addBlock($addressBlock);
+            }
         }
 
         // Items block
@@ -172,37 +199,49 @@ class SlackStatusChangeAction extends comStatusChangeAction
         ]);
 
         $misc = [];
-        $taxTotals = $order->getTaxTotals();
-        foreach ($taxTotals as $taxTotal) {
-            $misc[] = [
-                'type' => 'mrkdwn',
-                'text' => "{$taxTotal['name']} ({$taxTotal['percentage_formatted']}): *{$taxTotal['total_tax_amount_formatted']}*",
-            ];
+
+        if ($this->getProperty('include_taxes', true)) {
+            $taxTotals = $order->getTaxTotals();
+            foreach ($taxTotals as $taxTotal) {
+                $misc[] = [
+                    'type' => 'mrkdwn',
+                    'text' => "{$taxTotal['name']} ({$taxTotal['percentage_formatted']}): *{$taxTotal['total_tax_amount_formatted']}*",
+                ];
+            }
         }
-        foreach ($order->getShipments() as $shipment) {
-            if ($method = $shipment->getShippingMethod()) {
-                $text = "*{$method->get('name')}*";
-                if ($shipment->get('fee') !== 0) {
-                    $text .= ": {$shipment->get('fee_ex_tax_formatted')}";
+
+        if ($this->getProperty('include_shipping', true)) {
+            foreach ($order->getShipments() as $shipment) {
+                if ($method = $shipment->getShippingMethod()) {
+                    $text = "*{$method->get('name')}*";
+                    if ($shipment->get('fee') !== 0) {
+                        $text .= ": {$shipment->get('fee_ex_tax_formatted')}";
+                    }
+                    $misc[] = [
+                        'type' => 'mrkdwn',
+                        'text' => $text,
+                    ];
                 }
-                $misc[] = [
-                    'type' => 'mrkdwn',
-                    'text' => $text,
-                ];
             }
         }
-        foreach ($order->getTransactions() as $transaction) {
-            if ($transaction->isCompleted() && $method = $transaction->getMethod()) {
-                $misc[] = [
-                    'type' => 'mrkdwn',
-                    'text' => "Paid with *{$method->get('name')}*",
-                ];
+
+        if ($this->getProperty('include_payment', true)) {
+            foreach ($order->getTransactions() as $transaction) {
+                if ($transaction->isCompleted() && $method = $transaction->getMethod()) {
+                    $misc[] = [
+                        'type' => 'mrkdwn',
+                        'text' => "Paid with *{$method->get('name')}*",
+                    ];
+                }
             }
         }
-        $payload->addBlock([
-            'type' => 'context',
-            'elements' => $misc,
-        ]);
+
+        if (count($misc) > 0) {
+            $payload->addBlock([
+                'type' => 'context',
+                'elements' => $misc,
+            ]);
+        }
 
         // Grab the full site url
         $siteUrl = $this->adapter->getOption('site_url');
