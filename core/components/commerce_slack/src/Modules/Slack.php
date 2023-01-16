@@ -2,7 +2,7 @@
 namespace modmore\Commerce_Slack\Modules;
 use modmore\Commerce\Admin\Widgets\Form\DescriptionField;
 use modmore\Commerce\Modules\BaseModule;
-use Symfony\Component\EventDispatcher\EventDispatcher;
+use modmore\Commerce\Dispatcher\EventDispatcher;
 
 require_once dirname(dirname(__DIR__)) . '/vendor/autoload.php';
 
